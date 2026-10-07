@@ -1,0 +1,13 @@
+# Nothing generated at runtime belongs in this repo.
+# This project ships patches, scripts and docs only.
+*.log
+*.bak
+*.orig
+*.rej
+node_modules/
+.DS_Store
+
+# Never commit a live plugin bundle or a local backup archive.
+*.mjs.tmp
+patches/*.mjs
+archive/
