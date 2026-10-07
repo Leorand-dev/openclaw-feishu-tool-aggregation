@@ -209,7 +209,7 @@ Version history: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Compatibility notes
 
-Built and deployed against the Feishu plugin's streaming card renderer. Assumes:
+Built against the Feishu plugin's streaming card renderer. Assumes:
 
 - streaming enabled (`streaming.mode: "partial"` works; `renderMode` not `raw`)
 - the plugin's `deliver` interception point and `noVisibleFeishuReplyDelivery` sentinel
@@ -226,14 +226,12 @@ removal-pending and none are referenced by this patch.
 
 ---
 
-## Provenance
+## Verification status
 
-Developed and verified across four OpenClaw 2026.9.8 hosts — three Linux (systemd),
-one macOS (launchd) — with 1 and 7 Feishu accounts respectively. Deployed file hashes
-were byte-identical across all four, so the same `patched.mjs` was distributed unchanged.
-
-Behaviour verified end-to-end on one host; verified as correctly loaded on the rest.
-Rendering should be spot-checked after each upgrade.
+The patch is verified to load correctly and to produce the intended aggregate line on a
+live OpenClaw 2026.9.8 gateway. The predicate is additionally covered by 19/19 contract
+tests. Rendering should still be spot-checked after each upgrade, since any upgrade
+rewrites the bundle.
 
 ## Licence
 

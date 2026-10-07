@@ -15,26 +15,18 @@ Target OpenClaw `2026.9.8` (`fc23bc8`), Feishu plugin `2026.9.8`.
 - Original `df524437a7bc830be736ea5861599a31823c110e2dbc6dc688e4ce320622f88e`
   → patched `315954932e5b4ac5afe4069199a788e37016b3b9dae0caffc13160ce05f3d669`.
 
-### Deployment record
+### Operational notes
 
-Deployed to four OpenClaw 2026.9.8 hosts — three Linux/systemd, one macOS/launchd.
-Feishu account counts ranged from 1 to 7. Deployed hashes were byte-identical on all four,
-so a single `patched.mjs` was distributed unchanged.
-
-Two operational findings worth carrying forward:
+Two findings worth carrying forward:
 
 - **Cold start is slow enough to look like a failure.** Measured ~8s on macOS, ~10s on
-  Linux with one Feishu account, ~15s on Linux with seven accounts and five plugins. A
-  `curl` issued immediately after restart returned `HTTP 000` against a gateway that
+  Linux with one Feishu account, and ~15s on Linux with seven accounts and five plugins.
+  A `curl` issued immediately after restart returned `HTTP 000` against a gateway that
   was fully healthy seconds later. Confirm the listener with `ss -lntp` / `lsof` before
   concluding a restart failed, and allow ≥40s before probing.
 - **`lsof -p <pid>` cannot prove the patch was loaded.** Node releases the module fd after
   import, so the patched file's absence from the process's open-file list proves nothing
   in either direction. Use the new process's own Feishu reconnect log lines instead.
-
-An unrelated pre-existing fault was observed on one of the four hosts
-(`SESSION_CANONICAL_KEY_MIGRATION_REQUIRED` blocking memory-core's dreaming startup
-cleanup). Not caused by this patch and not addressed by it.
 
 ## 2026.9.6 — earlier port
 
