@@ -1,7 +1,7 @@
 # Feishu Tool-Summary Aggregation Patch for OpenClaw
 
 Collapse consecutive Feishu tool-call bubbles into a single counted line — `🛠️ Exec ×4` —
-instead of one message per tool call. Shipped and verified on **OpenClaw 2026.9.8**.
+instead of one message per tool call. Shipped and verified on **OpenClaw 2026.9.9**.
 
 While `verbose` is on, a burst of tool calls in Feishu produces one bubble per call, and
 the reply card becomes a wall of near-identical lines. This patch folds same-icon + same-label
@@ -9,12 +9,30 @@ summaries into one line with a multiplier, rendered above the final answer.
 
 | | |
 |---|---|
-| Target OpenClaw | **2026.9.8** (`fc23bc8`) |
+| Target OpenClaw | **2026.9.9** |
 | Target file | `<plugin>/dist/.setup/monitor.account-*.mjs` (minified bundle; name is build-specific) |
-| Original SHA256 | `df524437a7bc830be736ea5861599a31823c110e2dbc6dc688e4ce320622f88e` |
-| Patched SHA256 | `315954932e5b4ac5afe4069199a788e37016b3b9dae0caffc13160ce05f3d669` |
+| Original SHA256 | `53bd8ecf58ec2eda5a8fdc32f14ae284bfdf99ed73cb7c20ea2a2c297173d4aa` |
+| Patched SHA256 | `140fad8e7b3764929d15bc6dbde74356adf617aa1d30564ffa8979ac47b3e7d5` |
 | Edits | 7 anchors, each required to match exactly once |
 | Contract tests | 19/19 pass |
+
+### Pick your release
+
+`patches/` carries one verified patch per release:
+
+| File | Target OpenClaw | Patched SHA256 |
+|---|---|---|
+| `feishu-tool-aggregation-2026.9.9.patch` | 2026.9.9 | `140fad8e…` |
+| `feishu-tool-aggregation-2026.9.8.patch` | 2026.9.8 | `31595493…` |
+| `feishu-tool-aggregation-2026.9.6.patch` | 2026.9.6 | predates the predicate fix — see the fail-open section, do not install |
+
+Only the **9.9** hashes are compiled into `scripts/install.sh`. Installing an older
+patch also requires editing the two `EXPECTED_*` values in that script to match, since
+the installer refuses any bundle whose hash it has not verified:
+
+```bash
+./scripts/install.sh patches/feishu-tool-aggregation-2026.9.8.patch
+```
 
 ---
 
@@ -64,7 +82,7 @@ call is delivered normally rather than dropped.
 ```bash
 ./scripts/install.sh
 # or against an explicit patch file:
-./scripts/install.sh patches/feishu-tool-aggregation-2026.9.8.patch
+./scripts/install.sh patches/feishu-tool-aggregation-2026.9.9.patch
 ```
 
 The installer:
@@ -177,6 +195,28 @@ The predicate is extracted verbatim from the patched bundle, so the tests track 
 shipped behaviour rather than a reimplementation. Covers: shell/read/search/memory
 summaries, case-insensitive grouping, and every fail-open row in the table above.
 
+### Are the tests testing what ships?
+
+Those tests exercise their own copy of the predicate. That copy can drift from the
+bundle the plugin actually loads — and a stale test file would keep passing while the
+live behaviour regressed to the broken key-name whitelist.
+
+```bash
+node scripts/verify-predicate.mjs /path/to/patched.mjs
+# PREDICATE IDENTICAL — bundle matches tests/contract.test.mjs
+```
+
+It extracts the predicate from a bundle by brace-balanced scan and compares it against
+the test file, normalising whitespace and the two spellings of the NUL separator. Run it
+against the live file after every install or upgrade.
+
+Sanity-check it still fails on a known-bad bundle before trusting a pass:
+
+```bash
+node scripts/verify-predicate.mjs ~/.openclaw/patches/feishu-tool-aggregation-20260924/patched.mjs
+# PREDICATE DIFFERS  — this is the 2026-09-30 key-name-whitelist variant
+```
+
 ---
 
 ## Re-applying after an upgrade
@@ -229,7 +269,7 @@ removal-pending and none are referenced by this patch.
 ## Verification status
 
 The patch is verified to load correctly and to produce the intended aggregate line on a
-live OpenClaw 2026.9.8 gateway. The predicate is additionally covered by 19/19 contract
+live OpenClaw 2026.9.9 gateway. The predicate is additionally covered by 19/19 contract
 tests. Rendering should still be spot-checked after each upgrade, since any upgrade
 rewrites the bundle.
 

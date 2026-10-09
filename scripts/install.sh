@@ -3,9 +3,9 @@
 # Discovers the plugin path itself; no host-specific paths.
 set -euo pipefail
 
-PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.9.8.patch}"
-EXPECTED_ORIG="df524437a7bc830be736ea5861599a31823c110e2dbc6dc688e4ce320622f88e"
-EXPECTED_PATCHED="315954932e5b4ac5afe4069199a788e37016b3b9dae0caffc13160ce05f3d669"
+PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.9.9.patch}"
+EXPECTED_ORIG="53bd8ecf58ec2eda5a8fdc32f14ae284bfdf99ed73cb7c20ea2a2c297173d4aa"
+EXPECTED_PATCHED="140fad8e7b3764929d15bc6dbde74356adf617aa1d30564ffa8979ac47b3e7d5"
 
 hash_of() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$1" | cut -d' ' -f1; }
 
@@ -39,8 +39,16 @@ node --check "$WORK/f.mjs" || { echo "ERROR: syntax check failed"; exit 1; }
 NEW=$(hash_of "$WORK/f.mjs")
 [ "$NEW" = "$EXPECTED_PATCHED" ] || { echo "ERROR: result hash $NEW != $EXPECTED_PATCHED"; exit 1; }
 
+# The expected-hash check proves the patch is the one we built, not that the
+# behaviour is right. Confirm the predicate actually shipped is the one the
+# contract tests were written against, before touching the live file.
+node "$(dirname "$0")/verify-predicate.mjs" "$WORK/f.mjs" \
+  || { echo "ERROR: predicate drift — refusing to install"; exit 1; }
+
 cp "$WORK/f.mjs" "$TARGET"
 echo "installed. hash=$(hash_of "$TARGET")"
+node "$(dirname "$0")/verify-predicate.mjs" "$TARGET" >/dev/null \
+  && echo "verified: predicate matches tests/contract.test.mjs"
 echo
 echo "RESTART REQUIRED. Options:"
 echo "  systemd:  systemctl --user restart openclaw-gateway"

@@ -1,0 +1,108 @@
+--- original.mjs
++++ patched.mjs
+@@ -1760,6 +1760,8 @@
+ 	let lastPartial = "";
+ 	let reasoningText = "";
+ 	let statusLine = "";
++	const aggregatedToolSummaryCounts = /* @__PURE__ */ new Map();
++	let aggregatedToolSummaryLine = "";
+ 	let snapshotBaseText = "";
+ 	let lastSnapshotTextLength = 0;
+ 	let hasStreamingFinalText = false;
+@@ -1787,9 +1789,15 @@
+ 	};
+ 	const buildCombinedStreamText = (thinking, answer) => {
+ 		const parts = [];
+-		if (thinking) parts.push(formatReasoningPrefix(thinking));
+-		if (thinking && answer) parts.push("\n\n---\n\n");
+-		if (answer) parts.push(answer);
++		if (aggregatedToolSummaryLine) parts.push(aggregatedToolSummaryLine);
++		if (thinking) {
++			if (parts.length > 0) parts.push("\n\n---\n\n");
++			parts.push(formatReasoningPrefix(thinking));
++		}
++		if (answer) {
++			if (parts.length > 0) parts.push(thinking ? "\n\n---\n\n" : "\n\n");
++			parts.push(answer);
++		}
+ 		if (statusLine) parts.push(parts.length > 0 ? `\n\n${statusLine}` : statusLine);
+ 		return parts.join("");
+ 	};
+@@ -1868,6 +1876,8 @@
+ 		lastPartial = "";
+ 		reasoningText = "";
+ 		statusLine = "";
++		aggregatedToolSummaryCounts.clear();
++		aggregatedToolSummaryLine = "";
+ 		snapshotBaseText = "";
+ 		lastSnapshotTextLength = 0;
+ 		hasStreamingFinalText = false;
+@@ -1997,6 +2007,41 @@
+ 		flushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText));
+ 		return false;
+ 	};
++	const parseCollapsibleToolSummary = (payload, info) => {
++		if (info?.kind !== "tool" || payload.isError === true) return void 0;
++		if (payload.mediaUrl || payload.mediaUrlFull || payload.mediaUrls?.length || payload.audioAsVoice === true) return void 0;
++		if (payload.channelData && Object.keys(payload.channelData).length > 0) return void 0;
++		if (Object.entries(payload).some(([key, value]) => key !== "text" && value !== void 0)) return void 0;
++		const text = typeof payload.text === "string" ? payload.text.trim() : "";
++		if (!text || /[\r\n]/.test(text) || text.length > 240) return void 0;
++		const match = text.match(/^(\S+)\s+(.+)$/u);
++		if (!match || !/^\p{Extended_Pictographic}/u.test(match[1])) return void 0;
++		const label = (match[2].split(":", 1)[0] ?? match[2]).trim();
++		if (!label || label.length > 80) return void 0;
++		return {
++			key: `${match[1]}\u0000${label.toLowerCase()}`,
++			icon: match[1],
++			label
++		};
++	};
++	const aggregateCollapsibleToolSummary = async (entry) => {
++		if (!streamingEnabled || renderMode === "raw") return false;
++		startStreaming();
++		if (streamingStartPromise) await streamingStartPromise;
++		if (!streaming?.isActive()) return false;
++		markVisibleReplySent();
++		const current = aggregatedToolSummaryCounts.get(entry.key);
++		if (current) current.count += 1;
++		else aggregatedToolSummaryCounts.set(entry.key, {
++			icon: entry.icon,
++			label: entry.label,
++			count: 1
++		});
++		aggregatedToolSummaryLine = Array.from(aggregatedToolSummaryCounts.values(), ({ icon, label, count }) => `${icon} ${label}${count > 1 ? ` ×${count}` : ""}`).join("\n");
++		statusLine = "";
++		flushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText));
++		return true;
++	};
+ 	const sendChunkedTextReply = async (paramsLocal) => {
+ 		const header = paramsLocal.useCard ? resolveCardHeader(agentId, identity) : void 0;
+ 		const note = paramsLocal.useCard ? resolveCardNote(agentId, identity, responsePrefixContextProvider()) : void 0;
+@@ -2273,6 +2318,8 @@
+ 				idleRequestedForReply = false;
+ 				visibleReplySent = false;
+ 				replyOutcome = void 0;
++				aggregatedToolSummaryCounts.clear();
++				aggregatedToolSummaryLine = "";
+ 			}
+ 			if (previewStreamingEnabled && renderMode === "card") startStreaming();
+ 			await Promise.resolve(typingCallbacks?.onReplyStart?.());
+@@ -2305,6 +2352,8 @@
+ 				};
+ 			},
+ 			deliver: async (inputPayload, info) => {
++				const collapsibleToolSummary = parseCollapsibleToolSummary(inputPayload, info);
++				if (collapsibleToolSummary && await aggregateCollapsibleToolSummary(collapsibleToolSummary)) return noVisibleFeishuReplyDelivery;
+ 				const prepared = await renderFeishuReplyPayload(inputPayload, {
+ 					to: sendTarget,
+ 					identity,
+@@ -2337,7 +2386,7 @@
+ 				const useStreamingCard = hasText && streamingEnabled && !finalTextExceedsStreamingLimit && (info?.kind === "final" || cardRenderingRequested);
+ 				const skipTextForDuplicateFinal = !hasIndependentPresentation && info?.kind === "final" && hasText && deliveredFinalTexts.has(text);
+ 				const shouldDeliverText = hasText && (!hasVoiceMedia || hasPresentationFallback) && !skipTextForDuplicateFinal;
+-				const shouldDiscardStreamingPreview = info?.kind === "final" && !(hasIndependentPresentation && payload.isError === true && hasStreamingFinalText) && (hasIndependentPresentation || finalTextExceedsStreamingLimit || hasMedia && (hasVoiceMedia && !shouldDeliverText && !ttsTextAlreadyVisible || skipTextForDuplicateFinal));
++				const shouldDiscardStreamingPreview = aggregatedToolSummaryLine === "" && info?.kind === "final" && !(hasIndependentPresentation && payload.isError === true && hasStreamingFinalText) && (hasIndependentPresentation || finalTextExceedsStreamingLimit || hasMedia && (hasVoiceMedia && !shouldDeliverText && !ttsTextAlreadyVisible || skipTextForDuplicateFinal));
+ 				const priorClosedStreamingSettlement = info?.kind === "final" && hasText && skipTextForDuplicateFinal ? claimClosedStreamingResult(void 0, text) : void 0;
+ 				if (!shouldDeliverText && !hasMedia && !presentationCard) {
+ 					if (priorClosedStreamingSettlement?.error !== void 0) throw toStringifiedError(priorClosedStreamingSettlement.error);

@@ -38,6 +38,14 @@ Anchors are given as *concept* plus the exact string used for the 9.8 port. Re-d
 them by searching the new bundle for the surrounding logic — the surrounding code moves
 between releases even when the intent does not.
 
+> **Before re-deriving anything, try the previous release's patch.**
+> ```bash
+> patch --dry-run -p0 pristine.mjs < patches/feishu-tool-aggregation-<prev>.patch
+> ```
+> On 2026.9.9 the 9.8 patch applied 7/7 with only line-offset drift. When that happens
+> the port is a hash update, not a re-derivation — but still confirm the predicate is
+> byte-identical (see §4) before trusting the result.
+
 ### Edit 1 — reply-scoped state
 
 Add the aggregation state next to the other per-reply text accumulators.
@@ -190,7 +198,25 @@ Then update `EXPECTED_ORIG` and `EXPECTED_PATCHED` in `scripts/install.sh`, and 
 hash table at the top of `README.md`.
 
 The 9.8 port also regenerated the `.patch` with `diff -u original.mjs patched.mjs`, so
-the committed diff is a plain unified diff between the two archived files.
+the committed diff is a plain unified diff between the two archived files. Generating it
+with bare labels keeps the output stable across machines:
+
+```bash
+diff -u --label original.mjs --label patched.mjs original.mjs patched.mjs > the.patch
+```
+
+Verify the predicate did not drift between releases. `tests/contract.test.mjs` exercises
+its own copy of the predicate, so it keeps passing even if the shipped one regressed —
+compare the bundle against it explicitly:
+
+```bash
+node scripts/verify-predicate.mjs patched.mjs
+# PREDICATE IDENTICAL
+```
+
+The script extracts the predicate from the bundle by brace-balanced scan, then compares
+it against the test file. Whitespace and `\0` vs `\u0000` escape style are normalised
+away; logic is not. On the 2026-09-30 regression it correctly reports `PREDICATE DIFFERS`.
 
 ## 5. Deploy
 
