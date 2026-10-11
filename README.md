@@ -1,7 +1,7 @@
 # Feishu Tool-Summary Aggregation Patch for OpenClaw
 
 Collapse consecutive Feishu tool-call bubbles into a single counted line — `🛠️ Exec ×4` —
-instead of one message per tool call. Shipped and verified on **OpenClaw 2026.10.1**.
+instead of one message per tool call. Shipped and verified on **OpenClaw 2026.9.9**.
 
 While `verbose` is on, a burst of tool calls in Feishu produces one bubble per call, and
 the reply card becomes a wall of near-identical lines. This patch folds same-icon + same-label
@@ -9,12 +9,15 @@ summaries into one line with a multiplier, rendered above the final answer.
 
 | | |
 |---|---|
-| Target OpenClaw | **2026.10.1** (`e178c39`), Feishu plugin **2026.10.1** |
+| Target OpenClaw | **2026.9.9** (`bcfc888`), Feishu plugin **2026.9.9** |
 | Target file | `<plugin>/dist/.setup/monitor.account-*.mjs` (minified bundle; name is build-specific) |
-| Original SHA256 | `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9` |
-| Patched SHA256 | `69c2553ed1faa08bcdee97fa9b9e087006645f448a67e74668507dba54cb6a5c` |
+| Original SHA256 | `53bd8ecf58ec2eda5a8fdc32f14ae284bfdf99ed73cb7c20ea2a2c297173d4aa` |
+| Patched SHA256 | `140fad8e7b3764929d15bc6dbde74356adf617aa1d30564ffa8979ac47b3e7d5` |
 | Edits | 7 anchors, each required to match exactly once |
 | Contract tests | 19/19 predicate + 14/14 lifecycle |
+
+> The 2026.10.1 port is committed for forward reference but has **not been deployed to**
+> or verified on a live 10.x gateway. 2026.9.9 remains the shipped target.
 
 ### Pick your release
 
@@ -27,12 +30,13 @@ summaries into one line with a multiplier, rendered above the final answer.
 | `feishu-tool-aggregation-2026.9.8.patch` | 2026.9.8 | `31595493…` |
 | `feishu-tool-aggregation-2026.9.6.patch` | 2026.9.6 | predates the predicate fix — see the fail-open section, do not install |
 
-Only the **10.1** hashes are compiled into `scripts/install.sh`. Installing an older
-patch also requires editing the two `EXPECTED_*` values in that script to match, since
-the installer refuses any bundle whose hash it has not verified:
+Only the **9.9** hashes are compiled into `scripts/install.sh`. Installing another release's
+patch requires editing the two `EXPECTED_*` values in that script to match, since the
+installer refuses any bundle whose hash it has not verified.
 
 ```bash
-./scripts/install.sh patches/feishu-tool-aggregation-2026.9.8.patch
+# 9.9 is the default; 10.1 needs its own EXPECTED_* values first
+./scripts/install.sh patches/feishu-tool-aggregation-2026.9.9.patch
 ```
 
 ---
@@ -101,7 +105,7 @@ while a tool batch is accumulating and nothing has been delivered yet.
 ```bash
 ./scripts/install.sh
 # or against an explicit patch file:
-./scripts/install.sh patches/feishu-tool-aggregation-2026.10.1.patch
+./scripts/install.sh patches/feishu-tool-aggregation-2026.9.9.patch
 ```
 
 The installer:
@@ -297,12 +301,13 @@ Built against the Feishu plugin's streaming card renderer. Assumes:
 None of these are public plugin-SDK API. Treat every OpenClaw upgrade as a re-verification
 event, not a formality.
 
-OpenClaw `2026.10.1` was reviewed for compatibility and shows no native tool-summary
-aggregation (grep for `parseCollapsibleToolSummary` / `aggregatedToolSummary*` returns 0),
-so this patch remains applicable and is not superseded by upstream. The relevant
-plugin-SDK deprecations (`message-presentation-legacy-bridges`,
-`plugin-sdk-broad-runtime-barrels`, `plugin-sdk-channel-setup-input-fields`,
-`media-legacy-projection`) are all removal-pending and none are referenced by this patch.
+OpenClaw `2026.10.1` (and `2026.10.1-beta.1`) was reviewed for compatibility and shows no
+native tool-summary aggregation (grep for `parseCollapsibleToolSummary` /
+`aggregatedToolSummary*` returns 0), so this patch remains applicable and is not
+superseded by upstream. The relevant plugin-SDK deprecations
+(`message-presentation-legacy-bridges`, `plugin-sdk-broad-runtime-barrels`,
+`plugin-sdk-channel-setup-input-fields`, `media-legacy-projection`) are all
+removal-pending and none are referenced by this patch.
 
 ### 2026.10.1 rewrote one of the seven anchors
 
@@ -335,9 +340,13 @@ the previous release's patch first — that tells you whether you have a hash up
 ## Verification status
 
 The patch is verified to load correctly and to produce the intended aggregate line on a
-live OpenClaw 2026.10.1 gateway. The predicate is additionally covered by 19/19 contract
-tests. Rendering should still be spot-checked after each upgrade, since any upgrade
-rewrites the bundle.
+live OpenClaw 2026.9.9 gateway (patched bundle sha256 `140fad8e…e7d5`, identical to
+`patches/feishu-tool-aggregation-2026.9.9.patch`'s expected result). The predicate is
+additionally covered by 19/19 contract tests. Rendering should still be spot-checked after
+each upgrade, since any upgrade rewrites the bundle.
+
+The 2026.10.1 port is code-complete and dry-run clean but **has not been deployed to a
+live 10.x gateway**; treat it as untested-against-10.x until proven.
 
 ## Licence
 

@@ -2,9 +2,13 @@
 
 All notable changes to this patch set.
 
-## 2026.10.1 — current
+## 2026.10.1 — committed, not deployed
 
 Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
+
+**Status: code-complete and dry-run clean, but never deployed to a live 10.x gateway and
+never verified end-to-end on it.** OpenClaw on the build hosts is `2026.9.9`; treat this
+entry as forward reference, not a shipped release.
 
 - **The first port that required re-deriving an anchor.** Dry-running the 9.9 patch
   against the 10.1 bundle gave 6/7 with offset drift and one hard failure:
@@ -89,8 +93,8 @@ Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
   (Superseded broken builds — do not use: `8a32793c…` many cards,
   `0336e454…` aggregation dead.)
 - Patch file `1de8f591e7bf765d934bdfc83d72d5f49bad8b2558da79c240da560d89bcd1e4`.
-- `install.sh` defaults to the 10.1 patch and both expected hashes; re-running it against
-  an already-patched live file reports `already patched` and exits 0.
+- `install.sh` **defaults to the 9.9 patch** and its two expected hashes; re-running it
+  against an already-patched live file reports `already patched` and exits 0.
 
 ### Carried-forward lesson
 
@@ -115,11 +119,11 @@ Target OpenClaw `2026.9.9`, Feishu plugin `2026.9.9`.
 - Patch file `6f5b44267715eb9182976b2566b55984da9088c9919d4c32d984d86004377264`.
 - `scripts/install.sh` now defaults to the 9.9 patch and both expected hashes.
 
-### Note on installing an older patch
+### Note on installing another release's patch
 
-Only the 10.1 hashes are compiled into `scripts/install.sh`. The installer deliberately
-refuses a bundle whose hash it has not verified, so pointing it at an older patch file
-alone will fail — edit both `EXPECTED_*` values too.
+Only the **9.9** hashes are compiled into `scripts/install.sh`. The installer deliberately
+refuses a bundle whose hash it has not verified, so pointing it at another release's patch
+file alone will fail — edit both `EXPECTED_*` values too.
 
 ## 2026.9.8
 
