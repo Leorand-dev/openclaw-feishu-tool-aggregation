@@ -27,14 +27,51 @@ Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
   retyped, so the shipped predicate is byte-identical to 9.9 by construction.
   `verify-predicate.mjs` confirms this against the 10.1 bundle.
 
-- **Fixed: the aggregator opened a Feishu card per tool group.** `aggregateCollapsibleToolSummary`
-  called `startStreaming()` itself. Upstream closes the card on idle and nulls `streaming`,
-  so every tool group opened a fresh card — a single turn produced three or four instead of
-  one. The aggregator now only checks for an already-active stream and fails open otherwise,
-  so the patch can never open a card. This had shipped on 2026-09-30 and was noticed on
-  2026-10-11; it is **not** a 10.1 regression — the same bug is visible in the 9.9 logs from
-  2026-10-09 12:10. Cost: tool summaries arriving before the stream opens are no longer
-  folded (they render through the original path).
+- **Two failed intermediate builds, then a real fix.** The 7-anchor port itself was fine;
+  the streaming lifecycle took three attempts, and two of them shipped before the user
+  noticed. Both failure modes are recorded because the final fix needs *both* halves.
+
+  | build | cards/turn | aggregate line | symptom |
+  |---|---|---|---|
+  | v1 `8a32793c…` | 3–19 | yes | one card per tool group |
+  | 方案 A `0336e454…` | 1 | **none** | 119s of silence, aggregation dead |
+  | **C `69c2553e…`** | 1 | yes | current |
+
+  *Why v1 produced many cards.* The aggregator called `startStreaming()`; upstream closes
+  the card on every idle, so each tool group opened a fresh one. This had shipped since
+  2026-09-30 and is visible in the 9.9 logs from 2026-10-09 12:10.
+
+  *Why 方案 A killed aggregation.* Removing that `startStreaming()` looked like removing a
+  side effect, but it was the load-bearing half. With `renderMode=auto`, the only upstream
+  path that opens a card is `onPartialReply` — the first text token. Tool summaries
+  therefore *always* arrive before any card exists, so `if (!streaming?.isActive()) return
+  false` was structurally always true and aggregation could never fire. The card was
+  correctly counted as "not many" because no card was opened at all.
+
+  *The actual fix.* Keep the early `startStreaming()` — it is what gives the aggregate line
+  somewhere to live — and stop the repeated cards at the **close** point instead:
+
+  ```js
+  onIdle: () => {
+      if (aggregatedToolSummaryLine !== "" && !streamText && !reasoningText && deliveredFinalTexts.size === 0) return;
+      queueIdleSideEffects();
+  },
+  ```
+
+  The guard sits on `onIdle` rather than inside `queueIdleSideEffects`' do/while, so the
+  load-bearing finalization loop is untouched. It releases on any sign the reply is
+  arriving — streamed text, reasoning, or a delivered final — so the card cannot stay open
+  indefinitely.
+
+  **Known edge case, not handled:** a turn that ends after tool calls with no answer text
+  and no delivered final would hold the card open. Not observed, but not ruled out.
+
+- **Rewrote `tests/lifecycle.test.mjs` (14 checks).** The previous version asserted the
+  patch adds no `startStreaming()` call site — which *passes* 方案 A and therefore endorsed
+  the broken build. It now asserts both halves: the aggregator must open the card early,
+  **and** `onIdle` must hold it open. Verified against all three builds — 方案 C 14/14,
+  方案 A 6 failures, v1 3 failures. A lifecycle test that only catches one failure mode
+  will bless the other.
 - **Added `tests/lifecycle.test.mjs`** (9 checks). The 19 predicate tests could never catch
   this: they exercise an extracted copy of the accept/reject decision and never touch the
   streaming lifecycle. The new test runs against the shipped bundle and asserts the patch
@@ -48,10 +85,10 @@ Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
   and `aggregatedToolSummary*` returns 0), so the patch is not superseded by upstream.
 
 - Original `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9`
-  → patched `0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c`.
-  (A buggy intermediate build `8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec`
-  is superseded — do not use it.)
-- Patch file `28e222cc1ecaef0a9fe837a0ef7fae7d1cb9f3d7133eaf4e6ed6f4187b5c17be`.
+  → patched `69c2553ed1faa08bcdee97fa9b9e087006645f448a67e74668507dba54cb6a5c`.
+  (Superseded broken builds — do not use: `8a32793c…` many cards,
+  `0336e454…` aggregation dead.)
+- Patch file `1de8f591e7bf765d934bdfc83d72d5f49bad8b2558da79c240da560d89bcd1e4`.
 - `install.sh` defaults to the 10.1 patch and both expected hashes; re-running it against
   an already-patched live file reports `already patched` and exits 0.
 

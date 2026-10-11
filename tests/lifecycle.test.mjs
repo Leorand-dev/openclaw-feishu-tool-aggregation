@@ -1,13 +1,24 @@
-// Lifecycle contract: the patch must never open a streaming card of its own.
+// Lifecycle contract for the Feishu tool-summary aggregation patch.
 //
-// Regression test for a bug shipped on 2026-10-09 and noticed on 2026-10-11:
-// aggregateCollapsibleToolSummary called startStreaming() itself. Upstream
-// closes the card on idle, so every tool group opened a fresh Feishu card —
-// one turn produced three or four instead of one.
+// These checks exist because the 19 predicate tests cannot see the streaming
+// lifecycle at all — they exercise an extracted copy of the accept/reject
+// decision. Two shipped variants got that wrong in opposite directions:
 //
-// The predicate tests in contract.test.mjs cannot catch this: they exercise an
-// extracted copy of the accept/reject decision and never touch the streaming
-// lifecycle. These checks run against the shipped bundle.
+//   v1      aggregator called startStreaming() and idle closed the card after
+//           every tool group -> one turn produced 3-4 cards.
+//   方案 A  aggregator stopped calling startStreaming() -> with renderMode=auto
+//           the only upstream path that opens a card is onPartialReply (first
+//           text token), so tool summaries always arrived before any card
+//           existed and aggregation was structurally unreachable. 119s of
+//           silence, no aggregate line.
+//
+// The fix needs BOTH halves, so both are asserted:
+//
+//   * the aggregator must open the card early, or aggregation never triggers;
+//   * onIdle must hold that card open across idle, or each tool group opens a
+//     fresh one.
+//
+// Asserting either alone passes a broken variant. Checked against all three:
 //
 //   node tests/lifecycle.test.mjs <patched.mjs> <original.mjs>
 
@@ -19,16 +30,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const [, , patchedArg, originalArg] = process.argv;
 
 const patchedPath = patchedArg ?? resolve(here, "..", "patches", "feishu-tool-aggregation-2026.10.1.patch");
-const originalPath = originalArg;
-
 if (!originalArg) {
 	console.error("usage: node tests/lifecycle.test.mjs <patched.mjs> <original.mjs>");
-	console.error("Both are needed: the invariant is about what the patch ADDS.");
+	console.error("Both are required: the card-count invariant is about what the patch ADDS.");
 	process.exit(2);
 }
 
 const patched = readFileSync(patchedPath, "utf8");
-const original = readFileSync(originalPath, "utf8");
+const original = readFileSync(originalArg, "utf8");
 
 let pass = 0;
 let fail = 0;
@@ -39,39 +48,64 @@ const check = (name, ok, detail = "") => {
 
 const count = (src, needle) => src.split(needle).length - 1;
 
-// --- the invariant that broke ---
+// Pull a function body by brace balancing, so we never reproduce it.
+const bodyOf = (src, signature) => {
+	const start = src.indexOf(signature);
+	if (start < 0) return "";
+	let depth = 0;
+	for (let i = src.indexOf("{", start); i < src.length; i++) {
+		if (src[i] === "{") depth++;
+		else if (src[i] === "}" && --depth === 0) return src.slice(start, i + 1);
+	}
+	return "";
+};
 
-const patchedStarts = count(patched, "startStreaming()");
-const originalStarts = count(original, "startStreaming()");
+const agg = bodyOf(patched, "const aggregateCollapsibleToolSummary = async");
+
+// --- half 1: the aggregator must open the card early ---
+
+check("aggregator exists", agg.length > 0);
 check(
-	"patch adds no startStreaming() call site",
-	patchedStarts === originalStarts,
-	`patched=${patchedStarts} original=${originalStarts}`,
+	"aggregator opens the card early (or aggregation is unreachable)",
+	agg.includes("startStreaming()"),
+	"方案 A removed this and killed aggregation",
 );
-
-const aggregatorStart = patched.indexOf("const aggregateCollapsibleToolSummary");
-const aggregator = aggregatorStart < 0 ? "" : patched.slice(aggregatorStart);
-const aggregatorBody = aggregator.slice(0, aggregator.indexOf("\n\t};"));
-
-check(
-	"aggregator never calls startStreaming()",
-	aggregator.length > 0 && !aggregatorBody.includes("startStreaming()"),
-);
-
-// The removed `await streamingStartPromise` is the other half of the bug: it
-// blocked on a start the aggregator no longer requests. Naming it separately
-// keeps this assertion from silently becoming redundant with the one above.
-check(
-	"aggregator never awaits streamingStartPromise",
-	aggregator.length > 0 && !aggregatorBody.includes("streamingStartPromise"),
-);
-
+check("aggregator awaits the start before checking", agg.includes("await streamingStartPromise"));
 check(
 	"aggregator still requires an active stream",
-	aggregatorBody.includes("if (!streaming?.isActive()) return false;"),
+	agg.includes("if (!streaming?.isActive()) return false;"),
 );
 
-// --- structural guards on the other six edits ---
+// --- half 2: idle must not close the card mid-batch ---
+
+const idleStart = patched.indexOf("onIdle: () =>");
+const idleBody = idleStart < 0 ? "" : patched.slice(idleStart, patched.indexOf("}),", idleStart) + 3);
+check("onIdle handler exists", idleStart >= 0);
+check(
+	"onIdle holds the card open while a tool batch accumulates",
+	idleBody.includes("aggregatedToolSummaryLine !== \"\"") && idleBody.includes("return;"),
+	"v1 closed the card after every tool group -> 3-4 cards per turn",
+);
+check(
+	"onIdle still queues finalisation when the reply is arriving",
+	idleBody.includes("queueIdleSideEffects();"),
+);
+check(
+	"onIdle guard releases on text, reasoning or a delivered final",
+	/!streamText/.test(idleBody) && /!reasoningText/.test(idleBody) && /deliveredFinalTexts\.size === 0/.test(idleBody),
+	"without every release signal the card could stay open forever",
+);
+
+// --- exactly one added startStreaming call site ---
+
+const added = count(patched, "startStreaming()") - count(original, "startStreaming()");
+check(
+	"patch adds exactly one startStreaming() call site",
+	added === 1,
+	`added=${added} (expected 1: the aggregator)`,
+);
+
+// --- structural guards on the other edits ---
 
 for (const [name, needle] of [
 	["reply-scoped state exists", "const aggregatedToolSummaryCounts = /* @__PURE__ */ new Map();"],
@@ -82,7 +116,6 @@ for (const [name, needle] of [
 	check(name, patched.includes(needle));
 }
 
-// Counts must clear on both reset paths, or the multiplier climbs across turns.
 const clears = count(patched, "aggregatedToolSummaryCounts.clear();");
 check("counts cleared on both reset paths", clears >= 2, `found ${clears}`);
 

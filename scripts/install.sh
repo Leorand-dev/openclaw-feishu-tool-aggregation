@@ -5,7 +5,7 @@ set -euo pipefail
 
 PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.10.1.patch}"
 EXPECTED_ORIG="9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9"
-EXPECTED_PATCHED="0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c"
+EXPECTED_PATCHED="69c2553ed1faa08bcdee97fa9b9e087006645f448a67e74668507dba54cb6a5c"
 
 hash_of() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$1" | cut -d' ' -f1; }
 

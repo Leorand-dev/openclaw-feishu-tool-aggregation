@@ -12,9 +12,9 @@ summaries into one line with a multiplier, rendered above the final answer.
 | Target OpenClaw | **2026.10.1** (`e178c39`), Feishu plugin **2026.10.1** |
 | Target file | `<plugin>/dist/.setup/monitor.account-*.mjs` (minified bundle; name is build-specific) |
 | Original SHA256 | `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9` |
-| Patched SHA256 | `0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c` |
+| Patched SHA256 | `69c2553ed1faa08bcdee97fa9b9e087006645f448a67e74668507dba54cb6a5c` |
 | Edits | 7 anchors, each required to match exactly once |
-| Contract tests | 19/19 predicate + 9/9 lifecycle |
+| Contract tests | 19/19 predicate + 14/14 lifecycle |
 
 ### Pick your release
 
@@ -22,7 +22,7 @@ summaries into one line with a multiplier, rendered above the final answer.
 
 | File | Target OpenClaw | Patched SHA256 |
 |---|---|---|
-| `feishu-tool-aggregation-2026.10.1.patch` | 2026.10.1 | `0336e454…` |
+| `feishu-tool-aggregation-2026.10.1.patch` | 2026.10.1 | `69c2553e…` |
 | `feishu-tool-aggregation-2026.9.9.patch` | 2026.9.9 | `140fad8e…` |
 | `feishu-tool-aggregation-2026.9.8.patch` | 2026.9.8 | `31595493…` |
 | `feishu-tool-aggregation-2026.9.6.patch` | 2026.9.6 | predates the predicate fix — see the fail-open section, do not install |
@@ -76,11 +76,23 @@ Every one of these is deliberately **not** collapsed:
 The last row matters: aggregation is opportunistic. If the card isn't streaming yet, the
 call is delivered normally rather than dropped.
 
-**And the patch never opens a card itself.** An earlier build called `startStreaming()` from
-inside the aggregator, which broke that rule: upstream closes the card on idle, so each tool
-group started a fresh one and a single turn produced three or four cards. The aggregator now
-only inspects an already-active stream. The cost is real but small — tool summaries that
-arrive before the stream opens are no longer folded, and render through the original path.
+**And the aggregator opens the card early, while `onIdle` holds it open.** These are two
+halves of one mechanism, and getting either wrong ships a broken build — both happened.
+
+The aggregator calls `startStreaming()` because with `renderMode=auto` the only upstream
+path that opens a card is `onPartialReply` (the first text token). Tool summaries arrive
+*before* that, so without the early start the `!streaming?.isActive()` check above would be
+structurally always true and aggregation could never fire.
+
+That same early start is why `onIdle` needs the guard: upstream closes the card on every
+idle, so each tool group would otherwise open a fresh one. The guard holds the card only
+while a tool batch is accumulating and nothing has been delivered yet.
+
+| build | cards/turn | aggregate line |
+|---|---|---|
+| without the guard | 3–19 | yes |
+| without the early start | 1 | **none** |
+| both | 1 | yes |
 
 ---
 
@@ -210,15 +222,17 @@ card for every tool group. `tests/lifecycle.test.mjs` closes that gap:
 
 ```bash
 node tests/lifecycle.test.mjs <patched.mjs> <original.mjs>
-# 9 passed, 0 failed
+# 14 passed, 0 failed
 ```
 
-It asserts the patch adds **no** `startStreaming()` call site — `patched` and `original`
-must contain the same number. Both arguments are required, because the invariant is about
-what the patch *adds*, not about absolute counts.
+It asserts **both** halves of the card mechanism: the aggregator must open the card early,
+and `onIdle` must hold it open across idle. Asserting either alone passes a broken build —
+an earlier version asserted only "no added `startStreaming()` call site", which passed the
+build where aggregation was completely dead. Both arguments are required, because the
+invariants are about what the patch *adds*.
 
-Check it still fails on a known-bad bundle before trusting a pass. The 2026-10-11
-predecessor reports `patched=6 original=5`.
+Check it still fails on known-bad bundles before trusting a pass. It reports 6 failures
+against the aggregation-dead build and 3 against the many-cards build.
 
 ### Are the tests testing what ships?
 
