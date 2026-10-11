@@ -2,7 +2,50 @@
 
 All notable changes to this patch set.
 
-## 2026.9.9 — current
+## 2026.10.1 — current
+
+Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
+
+- **The first port that required re-deriving an anchor.** Dry-running the 9.9 patch
+  against the 10.1 bundle gave 6/7 with offset drift and one hard failure:
+
+  ```
+  Hunk #1 succeeded at 1730 (offset -30 lines).
+  Hunk #2 FAILED at 1789.
+  ...
+  1 out of 7 hunks FAILED
+  ```
+
+  Upstream collapsed `buildCombinedStreamText` into a one-liner
+  (`return [[…].filter(Boolean).join("\n\n---\n\n"), statusLine].filter(Boolean).join("\n\n")`),
+  so none of the anchor text survived. Behaviour is unchanged — it is the *shape* that
+  moved. Edit 2 was rewritten against the new form, prepending the aggregate line to the
+  same `filter(Boolean)` chain that already drops empty segments. Edits 1, 3, 4, 5, 6, 7
+  applied verbatim from the 9.9 patch with offset drift only.
+
+- Edit 5's inserted block was **extracted from the 9.9 patch at patch time** rather than
+  retyped, so the shipped predicate is byte-identical to 9.9 by construction.
+  `verify-predicate.mjs` confirms this against the 10.1 bundle.
+
+- Replay-verified: `patch --dry-run` → apply → result is byte-identical to the archived
+  `patched.mjs` (`cmp` clean), not merely "applies without error".
+
+- No native tool-summary aggregation exists in 10.1 (`grep` for `parseCollapsibleToolSummary`
+  and `aggregatedToolSummary*` returns 0), so the patch is not superseded by upstream.
+
+- Original `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9`
+  → patched `8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec`.
+- Patch file `b5040ae6b1b7e4c1bee191c8aa73d1d6c915f0442809eee5ac1f07eab85630b3`.
+- `install.sh` defaults to the 10.1 patch and both expected hashes; re-running it against
+  an already-patched live file reports `already patched` and exits 0.
+
+### Carried-forward lesson
+
+Do not assume "the previous release's patch will apply." It held for 9.8→9.9 and broke at
+9.9→10.1. Always dry-run first — the result is a cheap fork between "hash-only update"
+and "re-derive anchors."
+
+## 2026.9.9
 
 Target OpenClaw `2026.9.9`, Feishu plugin `2026.9.9`.
 
@@ -21,8 +64,8 @@ Target OpenClaw `2026.9.9`, Feishu plugin `2026.9.9`.
 
 ### Note on installing an older patch
 
-Only the 9.9 hashes are compiled into `scripts/install.sh`. The installer deliberately
-refuses a bundle whose hash it has not verified, so pointing it at the 9.8 patch file
+Only the 10.1 hashes are compiled into `scripts/install.sh`. The installer deliberately
+refuses a bundle whose hash it has not verified, so pointing it at an older patch file
 alone will fail — edit both `EXPECTED_*` values too.
 
 ## 2026.9.8

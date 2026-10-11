@@ -38,13 +38,41 @@ Anchors are given as *concept* plus the exact string used for the 9.8 port. Re-d
 them by searching the new bundle for the surrounding logic — the surrounding code moves
 between releases even when the intent does not.
 
-> **Before re-deriving anything, try the previous release's patch.**
-> ```bash
-> patch --dry-run -p0 pristine.mjs < patches/feishu-tool-aggregation-<prev>.patch
-> ```
-> On 2026.9.9 the 9.8 patch applied 7/7 with only line-offset drift. When that happens
-> the port is a hash update, not a re-derivation — but still confirm the predicate is
-> byte-identical (see §4) before trusting the result.
+**Always dry-run the previous release's patch before deriving anything.**
+
+```bash
+patch --dry-run -p0 pristine.mjs < patches/feishu-tool-aggregation-<prev>.patch
+```
+
+The result is a cheap fork:
+
+| Dry-run result | What it means |
+|---|---|
+| 7/7 succeeded (offsets only) | Hash-only update — but still verify the predicate (§4) |
+| Any `hunk #N FAILED` | Real porting work; the anchor text moved |
+
+This held for 9.8→9.9 and **broke at 9.9→10.1**, where `buildCombinedStreamText` was
+collapsed into a one-liner and edit 2's anchor vanished. Do not assume the previous
+patch will apply — that assumption cost a failed run on 2026-10-11.
+
+### When an anchor has moved
+
+Re-derive against the new shape, and preserve the *behaviour*, not the old text. For
+10.1's one-liner that meant prepending the aggregate line to the chain that already
+drops empty segments, rather than transliterating the old multi-statement body:
+
+```js
+const buildCombinedStreamText = (thinking, answer) => {
+	const parts = [aggregatedToolSummaryLine, [thinking ? formatReasoningPrefix(thinking) : "", answer].filter(Boolean).join("\n\n---\n\n")].filter(Boolean);
+	return [parts.join("\n\n"), statusLine].filter(Boolean).join("\n\n");
+};
+```
+
+### Do not retype the predicate
+
+Extract edit 5's block from the previous `.patch` at patch time. It keeps the shipped
+predicate byte-identical across releases by construction, and sidesteps the class of bug
+where a hand-copied separator (`\0` vs `\u0000`) silently diverges.
 
 ### Edit 1 — reply-scoped state
 

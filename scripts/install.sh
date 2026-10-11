@@ -3,9 +3,9 @@
 # Discovers the plugin path itself; no host-specific paths.
 set -euo pipefail
 
-PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.9.9.patch}"
-EXPECTED_ORIG="53bd8ecf58ec2eda5a8fdc32f14ae284bfdf99ed73cb7c20ea2a2c297173d4aa"
-EXPECTED_PATCHED="140fad8e7b3764929d15bc6dbde74356adf617aa1d30564ffa8979ac47b3e7d5"
+PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.10.1.patch}"
+EXPECTED_ORIG="9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9"
+EXPECTED_PATCHED="8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec"
 
 hash_of() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$1" | cut -d' ' -f1; }
 
