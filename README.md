@@ -12,9 +12,9 @@ summaries into one line with a multiplier, rendered above the final answer.
 | Target OpenClaw | **2026.10.1** (`e178c39`), Feishu plugin **2026.10.1** |
 | Target file | `<plugin>/dist/.setup/monitor.account-*.mjs` (minified bundle; name is build-specific) |
 | Original SHA256 | `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9` |
-| Patched SHA256 | `8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec` |
+| Patched SHA256 | `0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c` |
 | Edits | 7 anchors, each required to match exactly once |
-| Contract tests | 19/19 pass |
+| Contract tests | 19/19 predicate + 9/9 lifecycle |
 
 ### Pick your release
 
@@ -22,7 +22,7 @@ summaries into one line with a multiplier, rendered above the final answer.
 
 | File | Target OpenClaw | Patched SHA256 |
 |---|---|---|
-| `feishu-tool-aggregation-2026.10.1.patch` | 2026.10.1 | `8a32793c…` |
+| `feishu-tool-aggregation-2026.10.1.patch` | 2026.10.1 | `0336e454…` |
 | `feishu-tool-aggregation-2026.9.9.patch` | 2026.9.9 | `140fad8e…` |
 | `feishu-tool-aggregation-2026.9.8.patch` | 2026.9.8 | `31595493…` |
 | `feishu-tool-aggregation-2026.9.6.patch` | 2026.9.6 | predates the predicate fix — see the fail-open section, do not install |
@@ -75,6 +75,12 @@ Every one of these is deliberately **not** collapsed:
 
 The last row matters: aggregation is opportunistic. If the card isn't streaming yet, the
 call is delivered normally rather than dropped.
+
+**And the patch never opens a card itself.** An earlier build called `startStreaming()` from
+inside the aggregator, which broke that rule: upstream closes the card on idle, so each tool
+group started a fresh one and a single turn produced three or four cards. The aggregator now
+only inspects an already-active stream. The cost is real but small — tool summaries that
+arrive before the stream opens are no longer folded, and render through the original path.
 
 ---
 
@@ -195,6 +201,24 @@ node tests/contract.test.mjs
 The predicate is extracted verbatim from the patched bundle, so the tests track the
 shipped behaviour rather than a reimplementation. Covers: shell/read/search/memory
 summaries, case-insensitive grouping, and every fail-open row in the table above.
+
+### The lifecycle test
+
+`tests/contract.test.mjs` only decides accept-vs-reject. It never touches the streaming
+lifecycle, which is why it stayed 19/19 green while the shipped bundle opened a new Feishu
+card for every tool group. `tests/lifecycle.test.mjs` closes that gap:
+
+```bash
+node tests/lifecycle.test.mjs <patched.mjs> <original.mjs>
+# 9 passed, 0 failed
+```
+
+It asserts the patch adds **no** `startStreaming()` call site — `patched` and `original`
+must contain the same number. Both arguments are required, because the invariant is about
+what the patch *adds*, not about absolute counts.
+
+Check it still fails on a known-bad bundle before trusting a pass. The 2026-10-11
+predecessor reports `patched=6 original=5`.
 
 ### Are the tests testing what ships?
 

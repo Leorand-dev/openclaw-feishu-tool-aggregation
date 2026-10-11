@@ -28,7 +28,7 @@
  		snapshotBaseText = "";
  		lastSnapshotTextLength = 0;
  		hasStreamingFinalText = false;
-@@ -1954,6 +1959,41 @@
+@@ -1954,6 +1959,39 @@
  		flushStreamingCardUpdate(buildCombinedStreamText(reasoningText, streamText));
  		return false;
  	};
@@ -51,8 +51,6 @@
 +	};
 +	const aggregateCollapsibleToolSummary = async (entry) => {
 +		if (!streamingEnabled || renderMode === "raw") return false;
-+		startStreaming();
-+		if (streamingStartPromise) await streamingStartPromise;
 +		if (!streaming?.isActive()) return false;
 +		markVisibleReplySent();
 +		const current = aggregatedToolSummaryCounts.get(entry.key);
@@ -70,7 +68,7 @@
  	const sendChunkedTextReply = async (paramsLocal) => {
  		const header = paramsLocal.useCard ? resolveCardHeader(agentId, identity) : void 0;
  		const note = paramsLocal.useCard ? resolveCardNote(agentId, identity, responsePrefixContextProvider()) : void 0;
-@@ -2221,6 +2261,8 @@
+@@ -2221,6 +2259,8 @@
  				idleRequestedForReply = false;
  				visibleReplySent = false;
  				replyOutcome = void 0;
@@ -79,7 +77,7 @@
  			}
  			if (previewStreamingEnabled && renderMode === "card") startStreaming();
  			await Promise.resolve(typingCallbacks?.onReplyStart?.());
-@@ -2253,6 +2295,8 @@
+@@ -2253,6 +2293,8 @@
  				};
  			},
  			deliver: async (inputPayload, info) => {
@@ -88,7 +86,7 @@
  				const prepared = await renderFeishuReplyPayload(inputPayload, {
  					to: sendTarget,
  					identity,
-@@ -2285,7 +2329,7 @@
+@@ -2285,7 +2327,7 @@
  				const useStreamingCard = hasText && streamingEnabled && !finalTextExceedsStreamingLimit && (info?.kind === "final" || cardRenderingRequested);
  				const skipTextForDuplicateFinal = !hasIndependentPresentation && info?.kind === "final" && hasText && deliveredFinalTexts.has(text);
  				const shouldDeliverText = hasText && (!hasVoiceMedia || hasPresentationFallback) && !skipTextForDuplicateFinal;

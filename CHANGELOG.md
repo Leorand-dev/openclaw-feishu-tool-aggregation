@@ -27,6 +27,20 @@ Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
   retyped, so the shipped predicate is byte-identical to 9.9 by construction.
   `verify-predicate.mjs` confirms this against the 10.1 bundle.
 
+- **Fixed: the aggregator opened a Feishu card per tool group.** `aggregateCollapsibleToolSummary`
+  called `startStreaming()` itself. Upstream closes the card on idle and nulls `streaming`,
+  so every tool group opened a fresh card — a single turn produced three or four instead of
+  one. The aggregator now only checks for an already-active stream and fails open otherwise,
+  so the patch can never open a card. This had shipped on 2026-09-30 and was noticed on
+  2026-10-11; it is **not** a 10.1 regression — the same bug is visible in the 9.9 logs from
+  2026-10-09 12:10. Cost: tool summaries arriving before the stream opens are no longer
+  folded (they render through the original path).
+- **Added `tests/lifecycle.test.mjs`** (9 checks). The 19 predicate tests could never catch
+  this: they exercise an extracted copy of the accept/reject decision and never touch the
+  streaming lifecycle. The new test runs against the shipped bundle and asserts the patch
+  adds **no** `startStreaming()` call site. Verified in both directions — the fixed bundle
+  passes 9/9, the buggy predecessor fails with `patched=6 original=5`. `install.sh` now runs
+  it on the staged file alongside `verify-predicate.mjs` and refuses to install on failure.
 - Replay-verified: `patch --dry-run` → apply → result is byte-identical to the archived
   `patched.mjs` (`cmp` clean), not merely "applies without error".
 
@@ -34,8 +48,10 @@ Target OpenClaw `2026.10.1` (`e178c39`), Feishu plugin `2026.10.1`.
   and `aggregatedToolSummary*` returns 0), so the patch is not superseded by upstream.
 
 - Original `9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9`
-  → patched `8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec`.
-- Patch file `b5040ae6b1b7e4c1bee191c8aa73d1d6c915f0442809eee5ac1f07eab85630b3`.
+  → patched `0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c`.
+  (A buggy intermediate build `8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec`
+  is superseded — do not use it.)
+- Patch file `28e222cc1ecaef0a9fe837a0ef7fae7d1cb9f3d7133eaf4e6ed6f4187b5c17be`.
 - `install.sh` defaults to the 10.1 patch and both expected hashes; re-running it against
   an already-patched live file reports `already patched` and exits 0.
 

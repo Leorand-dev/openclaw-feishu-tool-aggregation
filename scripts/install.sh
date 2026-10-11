@@ -5,7 +5,7 @@ set -euo pipefail
 
 PATCH_FILE="${1:-$(dirname "$0")/../patches/feishu-tool-aggregation-2026.10.1.patch}"
 EXPECTED_ORIG="9bbbd0c3baa9227ebeb6f719a317f990357236db46e2fd46b9eda5e81d2bd2d9"
-EXPECTED_PATCHED="8a32793ce0e1ef3ef77db68d3cda075bcab84da1acf16a518e3142bac15c32ec"
+EXPECTED_PATCHED="0336e454ac75e9d911afb38e266f978eb0a54950debda11511f14a0ac400c81c"
 
 hash_of() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$1" | cut -d' ' -f1; }
 
@@ -33,6 +33,7 @@ echo "backup: $ARCHIVE/original.mjs"
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 cp "$TARGET" "$WORK/f.mjs"
+cp "$TARGET" "$WORK/f.mjs.orig"
 patch --dry-run -p0 "$WORK/f.mjs" < "$PATCH_FILE" >/dev/null || { echo "ERROR: patch dry-run failed"; exit 1; }
 patch -p0 "$WORK/f.mjs" < "$PATCH_FILE" >/dev/null
 node --check "$WORK/f.mjs" || { echo "ERROR: syntax check failed"; exit 1; }
@@ -44,6 +45,11 @@ NEW=$(hash_of "$WORK/f.mjs")
 # contract tests were written against, before touching the live file.
 node "$(dirname "$0")/verify-predicate.mjs" "$WORK/f.mjs" \
   || { echo "ERROR: predicate drift — refusing to install"; exit 1; }
+
+# The predicate tests cannot see the streaming lifecycle. This one caught a
+# shipped bug where the aggregator opened a card per tool group.
+node "$(dirname "$0")/../tests/lifecycle.test.mjs" "$WORK/f.mjs" "$WORK/f.mjs.orig" \
+  || { echo "ERROR: lifecycle invariant violated — refusing to install"; exit 1; }
 
 cp "$WORK/f.mjs" "$TARGET"
 echo "installed. hash=$(hash_of "$TARGET")"
